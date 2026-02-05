@@ -1,0 +1,12 @@
+[project]
+name = "cs288-sp26-a1"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "datasets>=4.5.0",
+    "numpy>=2.2.6",
+    "torch>=2.10.0",
+    "tqdm>=4.67.2",
+]
