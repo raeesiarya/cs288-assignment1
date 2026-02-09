@@ -25,7 +25,20 @@ def featurize_data(
 ) -> List[DataPointWithFeatures]:
     """Add features to each datapoint based on feature types"""
     # TODO: Implement this!
-    raise NotImplementedError
+    featurizer = make_featurize(feature_types)
+
+    featurized = []
+    for dp in data:
+        features = featurizer(dp.text)
+        featurized.append(
+            DataPointWithFeatures(
+                id=dp.id,
+                text=dp.text,
+                label=dp.label,
+                features=features,
+            )
+        )
+    return featurized
 
 
 class PerceptronModel:
@@ -34,6 +47,8 @@ class PerceptronModel:
     def __init__(self):
         self.weights: Dict[str, float] = defaultdict(float)
         self.labels: Set[str] = set()
+        self.avg_weights: Dict[str, float] = defaultdict(float)
+        self.step: int = 0
 
     def _get_weight_key(self, feature: str, label: str) -> str:
         """An internal hash function to build keys of self.weights (needed for tests)"""
@@ -50,7 +65,11 @@ class PerceptronModel:
             The output score.
         """
         # TODO: Implement this! Expected # of lines: <10
-        raise NotImplementedError
+        s = 0.0
+        for feat, value in datapoint.features.items():
+            key = self._get_weight_key(feat, label)
+            s += self.weights[key] * value
+        return s
 
     def predict(self, datapoint: DataPointWithFeatures) -> str:
         """Predicts a label for an input.
@@ -62,7 +81,8 @@ class PerceptronModel:
             The predicted class.
         """
         # TODO: Implement this! Expected # of lines: <5
-        raise NotImplementedError
+        scores = {label: self.score(datapoint, label) for label in self.labels}
+        return max(scores, key=scores.get)
 
     def update_parameters(
         self, datapoint: DataPointWithFeatures, prediction: str, lr: float
@@ -75,7 +95,13 @@ class PerceptronModel:
             lr: Learning rate.
         """
         # TODO: Implement this! Expected # of lines: <10
-        raise NotImplementedError
+        gold = datapoint.label
+        if gold == prediction:
+            return
+
+        for feat, value in datapoint.features.items():
+            self.weights[self._get_weight_key(feat, gold)] += lr * value
+            self.weights[self._get_weight_key(feat, prediction)] -= lr * value
 
     def train(
         self,
@@ -95,7 +121,16 @@ class PerceptronModel:
             lr: Learning rate.
         """
         # TODO: Implement this!
-        raise NotImplementedError
+        for dp in training_data:
+            self.labels.add(dp.label)
+
+        for epoch in range(num_epochs):
+            for dp in tqdm(training_data):
+                pred = self.predict(dp)
+                self.update_parameters(dp, pred, lr)
+
+            val_acc = self.evaluate(val_data)
+            print(f"Epoch {epoch + 1:<2} | Val accuracy: {100 * val_acc:.2f}%")
 
     def save_weights(self, path: str) -> None:
         with open(path, "w") as f:
@@ -117,7 +152,20 @@ class PerceptronModel:
             accuracy (float): The accuracy of the model on the data.
         """
         # TODO: Implement this!
-        raise NotImplementedError
+        preds = []
+        golds = []
+
+        for dp in data:
+            pred = self.predict(dp)
+            preds.append(pred)
+            golds.append(dp.label)
+
+        acc = accuracy(preds, golds)
+
+        if save_path is not None:
+            save_results(data, preds, save_path)
+
+        return acc
 
 
 if __name__ == "__main__":
@@ -136,9 +184,7 @@ if __name__ == "__main__":
         default="bow",
         help="Feature type, e.g., bow+len",
     )
-    parser.add_argument(
-        "-e", "--epochs", type=int, default=3, help="Number of epochs"
-    )
+    parser.add_argument("-e", "--epochs", type=int, default=3, help="Number of epochs")
     parser.add_argument(
         "-l", "--learning_rate", type=float, default=0.1, help="Learning rate"
     )
@@ -179,7 +225,5 @@ if __name__ == "__main__":
     )
 
     model.save_weights(
-        os.path.join(
-            "results", f"perceptron_{args.data}_{args.features}_model.json"
-        )
+        os.path.join("results", f"perceptron_{args.data}_{args.features}_model.json")
     )

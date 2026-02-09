@@ -22,16 +22,51 @@ class DataPoint:
     label: str | None
 
 
-def read_labeled_data(
-    data_filename: str, labels_filename: str
-) -> List[DataPoint]:
+def read_labeled_data(data_filename: str, labels_filename: str) -> List[DataPoint]:
     # TODO: implement this! Expected # of lines: <10
-    raise NotImplementedError
+    def _get_text_column(df: pd.DataFrame) -> str:
+        for col in ["text", "sentence", "review", "label"]:
+            if col in df.columns:
+                return col
+
+    data_df = pd.read_csv(data_filename)
+    labels_df = pd.read_csv(labels_filename)
+
+    text_col = _get_text_column(data_df)
+    id2class = dict(zip(labels_df["id"], labels_df["label"]))
+
+    datapoints = []
+    for _, row in data_df.iterrows():
+        datapoints.append(
+            DataPoint(
+                id=row["id"],
+                text=row[text_col],
+                label=id2class[row["id"]],
+            )
+        )
+    return datapoints
 
 
 def read_unlabeled_data(data_filename: str) -> List[DataPoint]:
     # TODO: implement this! Expected # of lines: <10
-    raise NotImplementedError
+    def _get_text_column(df: pd.DataFrame) -> str:
+        for col in ["text", "sentence", "review", "label"]:
+            if col in df.columns:
+                return col
+
+    data_df = pd.read_csv(data_filename)
+    text_col = _get_text_column(data_df)
+
+    datapoints = []
+    for _, row in data_df.iterrows():
+        datapoints.append(
+            DataPoint(
+                id=row["id"],
+                text=row[text_col],
+                label=None,
+            )
+        )
+    return datapoints
 
 
 def load_data(

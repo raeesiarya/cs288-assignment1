@@ -42,7 +42,10 @@ class Tokenizer:
 
     def _pre_process_text(self, text: str) -> List[str]:
         # TODO: Implement this! Expected # of lines: 5~10
-        raise NotImplementedError
+        text = text.lower()
+        tokens = text.split()
+        tokens = [t for t in tokens if t not in Tokenizer.STOP_WORDS]
+        return tokens
 
     def __init__(self, data: List[DataPoint], max_vocab_size: int = None):
         corpus = " ".join([d.text for d in data])
@@ -56,7 +59,8 @@ class Tokenizer:
 
     def tokenize(self, text: str) -> List[int]:
         # TODO: Implement this! Expected # of lines: 5~10
-        raise NotImplementedError
+        tokens = self._pre_process_text(text)
+        return [self.token2id[t] for t in tokens if t in self.token2id]
 
 
 def get_label_mappings(
@@ -86,9 +90,7 @@ class BOWDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-    def __getitem__(
-        self, idx: int
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Returns a single example as a tuple of torch.Tensors.
         features_l: The tokenized text of example, shaped (max_length,)
         length: The length of the text, shaped ()
@@ -98,7 +100,20 @@ class BOWDataset(Dataset):
         """
         dp: DataPoint = self.data[idx]
         # TODO: Implement this! Expected # of lines: ~20
-        raise NotImplementedError
+        token_ids = self.tokenizer.tokenize(dp.text)
+
+        length = min(len(token_ids), self.max_length)
+        padded = token_ids[: self.max_length]
+        padded += [Tokenizer.TOK_PADDING_INDEX] * (self.max_length - len(padded))
+
+        features_l = torch.tensor(padded, dtype=torch.int64)
+        length_t = torch.tensor(length, dtype=torch.int64)
+        if dp.label is None:
+            label_t = torch.tensor(0, dtype=torch.int64)
+        else:
+            label_t = torch.tensor(self.label2id[dp.label], dtype=torch.int64)
+
+        return features_l, length_t, label_t
 
 
 class MultilayerPerceptronModel(nn.Module):
@@ -114,7 +129,19 @@ class MultilayerPerceptronModel(nn.Module):
         super().__init__()
         self.padding_index = padding_index
         # TODO: Implement this!
-        raise NotImplementedError
+        self.embedding = nn.Embedding(vocab_size, 256, padding_idx=padding_index)
+
+        self.mlp = nn.Sequential(
+            nn.Linear(256, 512),
+            nn.BatchNorm1d(512),
+            nn.LeakyReLU(0.01),
+            nn.Dropout(0.4),
+            nn.Linear(512, 256),
+            nn.BatchNorm1d(256),
+            nn.LeakyReLU(0.01),
+            nn.Dropout(0.4),
+            nn.Linear(256, num_classes),
+        )
 
     def forward(
         self, input_features_b_l: torch.Tensor, input_length_b: torch.Tensor
@@ -129,7 +156,16 @@ class MultilayerPerceptronModel(nn.Module):
             output_b_c: The output of the model.
         """
         # TODO: Implement this!
-        raise NotImplementedError
+        emb_b_l_d = self.embedding(input_features_b_l)
+
+        mask = (input_features_b_l != self.embedding.padding_idx).unsqueeze(-1)
+        emb_b_l_d = emb_b_l_d * mask
+
+        summed = emb_b_l_d.sum(dim=1)
+        lengths = input_length_b.unsqueeze(1).clamp(min=1)
+        pooled = summed / lengths
+
+        return self.mlp(pooled)
 
 
 class Trainer:
@@ -149,7 +185,16 @@ class Trainer:
         all_predictions = []
         dataloader = DataLoader(data, batch_size=32, shuffle=False)
         # TODO: Implement this!
-        raise NotImplementedError
+        self.model.eval()
+
+        dataloader = DataLoader(data, batch_size=32)
+        with torch.no_grad():
+            for x_b_l, len_b, _ in dataloader:
+                logits = self.model(x_b_l, len_b)
+                batch_preds = torch.argmax(logits, dim=1)
+                all_predictions.extend(batch_preds.tolist())
+
+        return all_predictions
 
     def evaluate(self, data: BOWDataset) -> float:
         """Evaluates the model on a dataset.
@@ -161,7 +206,18 @@ class Trainer:
             The accuracy of the model.
         """
         # TODO: Implement this!
-        raise NotImplementedError
+        self.model.eval()
+        all_preds, all_labels = [], []
+
+        dataloader = DataLoader(data, batch_size=32)
+        with torch.no_grad():
+            for x_b_l, len_b, y_b in dataloader:
+                logits = self.model(x_b_l, len_b)
+                preds = torch.argmax(logits, dim=1)
+                all_preds.extend(preds.tolist())
+                all_labels.extend(y_b.tolist())
+
+        return accuracy(all_preds, all_labels)
 
     def train(
         self,
@@ -180,21 +236,42 @@ class Trainer:
             optimizer: The optimization method.
             num_epochs: The number of training epochs.
         """
-        torch.manual_seed(0)
+        loss_fn = nn.CrossEntropyLoss()
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=4,  # decay etter epoch 4
+            gamma=0.5,
+        )
+
         for epoch in range(num_epochs):
             self.model.train()
-            total_loss = 0
-            dataloader = DataLoader(training_data, batch_size=4, shuffle=True)
+            total_loss = 0.0
+
+            dataloader = DataLoader(training_data, batch_size=32, shuffle=True)
             for inputs_b_l, lengths_b, labels_b in tqdm(dataloader):
-                # TODO: Implement this!
-                raise NotImplementedError
-            per_dp_loss = 0
+                optimizer.zero_grad()
+
+                logits = self.model(inputs_b_l, lengths_b)
+                loss = loss_fn(logits, labels_b)
+
+                loss.backward()
+                optimizer.step()
+
+                total_loss += loss.item()
+
+            per_dp_loss = total_loss / len(training_data)
 
             self.model.eval()
             val_acc = self.evaluate(val_data)
 
+            # 👇 decay LR én gang per epoch
+            scheduler.step()
+
             print(
-                f"Epoch: {epoch + 1:<2} | Loss: {per_dp_loss:.2f} | Val accuracy: {100 * val_acc:.2f}%"
+                f"Epoch: {epoch + 1:<2} | "
+                f"Loss: {per_dp_loss:.4f} | "
+                f"Val accuracy: {100 * val_acc:.2f}% | "
+                f"LR: {scheduler.get_last_lr()[0]:.6f}"
             )
 
 
@@ -207,9 +284,7 @@ if __name__ == "__main__":
         default="sst2",
         help="Data source, one of ('sst2', 'newsgroups')",
     )
-    parser.add_argument(
-        "-e", "--epochs", type=int, default=3, help="Number of epochs"
-    )
+    parser.add_argument("-e", "--epochs", type=int, default=3, help="Number of epochs")
     parser.add_argument(
         "-l", "--learning_rate", type=float, default=0.001, help="Learning rate"
     )
