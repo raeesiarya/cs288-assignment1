@@ -33,7 +33,7 @@ def read_labeled_data(data_filename: str, labels_filename: str) -> List[DataPoin
     labels_df = pd.read_csv(labels_filename)
 
     text_col = _get_text_column(data_df)
-    id2class = dict(zip(labels_df["id"], labels_df["label"]))
+    id2class = dict(zip(labels_df["id"], labels_df["label"].astype(str)))
 
     datapoints = []
     for _, row in data_df.iterrows():

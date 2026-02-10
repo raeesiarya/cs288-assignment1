@@ -82,7 +82,7 @@ class PerceptronModel:
         """
         # TODO: Implement this! Expected # of lines: <5
         scores = {label: self.score(datapoint, label) for label in self.labels}
-        return max(scores, key=scores.get)
+        return max(sorted(self.labels), key=lambda lbl: (scores[lbl], lbl))
 
     def update_parameters(
         self, datapoint: DataPointWithFeatures, prediction: str, lr: float
@@ -99,9 +99,14 @@ class PerceptronModel:
         if gold == prediction:
             return
 
+        self.step += 1
         for feat, value in datapoint.features.items():
-            self.weights[self._get_weight_key(feat, gold)] += lr * value
-            self.weights[self._get_weight_key(feat, prediction)] -= lr * value
+            g = self._get_weight_key(feat, gold)
+            p = self._get_weight_key(feat, prediction)
+            self.weights[g] += lr * value
+            self.weights[p] -= lr * value
+            self.avg_weights[g] += self.weights[g]
+            self.avg_weights[p] += self.weights[p]
 
     def train(
         self,
@@ -121,16 +126,25 @@ class PerceptronModel:
             lr: Learning rate.
         """
         # TODO: Implement this!
+        import random
+
         for dp in training_data:
             self.labels.add(dp.label)
 
         for epoch in range(num_epochs):
+            random.shuffle(training_data)
+            if (epoch + 1) % 4 == 0:
+                lr *= 0.5
+
             for dp in tqdm(training_data):
                 pred = self.predict(dp)
                 self.update_parameters(dp, pred, lr)
 
-            val_acc = self.evaluate(val_data)
-            print(f"Epoch {epoch + 1:<2} | Val accuracy: {100 * val_acc:.2f}%")
+            if len(val_data) > 0:
+                val_acc = self.evaluate(val_data)
+                print(
+                    f"Epoch {epoch + 1:<2} | LR: {lr} | Val accuracy: {100 * val_acc:.2f}%"
+                )
 
     def save_weights(self, path: str) -> None:
         with open(path, "w") as f:

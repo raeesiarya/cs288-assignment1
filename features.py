@@ -28,7 +28,7 @@ class BagOfWords(FeatureMap):
         for tok in text.lower().split():
             if tok in self.STOP_WORDS:
                 continue
-            feats[tok] = feats.get(tok, 0.0) + 1.0
+            feats[tok] = 1.0
         return self.prefix_with_name(feats)
 
 
