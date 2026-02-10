@@ -182,6 +182,53 @@ class PerceptronModel:
         return acc
 
 
+def main(
+    data: str = "sst2",
+    features: str = "bow",
+    num_epochs: int = 3,
+    lr: float = 0.1,
+):
+    data_type = DataType(data)
+    feature_types: Set[str] = set(features.split("+"))
+
+    train_data, val_data, dev_data, test_data = load_data(data_type)
+
+    train_data = featurize_data(train_data, feature_types)
+    val_data = featurize_data(val_data, feature_types)
+    dev_data = featurize_data(dev_data, feature_types)
+    test_data = featurize_data(test_data, feature_types)
+
+    model = PerceptronModel()
+    print("Training the model...")
+    model.train(train_data, val_data, num_epochs, lr)
+
+    # Dev
+    dev_acc = model.evaluate(
+        dev_data,
+        save_path=os.path.join(
+            "results",
+            f"perceptron_{data}_{features}_dev_predictions.csv",
+        ),
+    )
+    print(f"Development accuracy: {100 * dev_acc:.2f}%")
+
+    # Test
+    model.evaluate(
+        test_data,
+        save_path=os.path.join(
+            "results",
+            f"perceptron_{data}_test_predictions.csv",
+        ),
+    )
+
+    model.save_weights(
+        os.path.join(
+            "results",
+            f"perceptron_{data}_{features}_model.json",
+        )
+    )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Perceptron model")
     parser.add_argument(
@@ -198,46 +245,14 @@ if __name__ == "__main__":
         default="bow",
         help="Feature type, e.g., bow+len",
     )
-    parser.add_argument("-e", "--epochs", type=int, default=3, help="Number of epochs")
-    parser.add_argument(
-        "-l", "--learning_rate", type=float, default=0.1, help="Learning rate"
-    )
+    parser.add_argument("-e", "--epochs", type=int, default=3)
+    parser.add_argument("-l", "--learning_rate", type=float, default=0.1)
+
     args = parser.parse_args()
 
-    data_type = DataType(args.data)
-    feature_types: Set[str] = set(args.features.split("+"))
-    num_epochs: int = args.epochs
-    lr: float = args.learning_rate
-
-    train_data, val_data, dev_data, test_data = load_data(data_type)
-    train_data = featurize_data(train_data, feature_types)
-    val_data = featurize_data(val_data, feature_types)
-    dev_data = featurize_data(dev_data, feature_types)
-    test_data = featurize_data(test_data, feature_types)
-
-    model = PerceptronModel()
-    print("Training the model...")
-    model.train(train_data, val_data, num_epochs, lr)
-
-    # Predict on the development set.
-    dev_acc = model.evaluate(
-        dev_data,
-        save_path=os.path.join(
-            "results",
-            f"perceptron_{args.data}_{args.features}_dev_predictions.csv",
-        ),
-    )
-    print(f"Development accuracy: {100 * dev_acc:.2f}%")
-
-    # Predict on the test set
-    _ = model.evaluate(
-        test_data,
-        save_path=os.path.join(
-            "results",
-            f"perceptron_{args.data}_test_predictions.csv",
-        ),
-    )
-
-    model.save_weights(
-        os.path.join("results", f"perceptron_{args.data}_{args.features}_model.json")
+    main(
+        data=args.data,
+        features=args.features,
+        num_epochs=args.epochs,
+        lr=args.learning_rate,
     )

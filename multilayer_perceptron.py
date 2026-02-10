@@ -275,31 +275,17 @@ class Trainer:
             )
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MultiLayerPerceptron model")
-    parser.add_argument(
-        "-d",
-        "--data",
-        type=str,
-        default="sst2",
-        help="Data source, one of ('sst2', 'newsgroups')",
-    )
-    parser.add_argument("-e", "--epochs", type=int, default=3, help="Number of epochs")
-    parser.add_argument(
-        "-l", "--learning_rate", type=float, default=0.001, help="Learning rate"
-    )
-    args = parser.parse_args()
-
-    num_epochs = args.epochs
-    lr = args.learning_rate
-    data_type = DataType(args.data)
+def main(
+    data: str = "sst2",
+    num_epochs: int = 3,
+    lr: float = 0.001,
+):
+    data_type = DataType(data)
 
     train_data, val_data, dev_data, test_data = load_data(data_type)
 
     tokenizer = Tokenizer(train_data, max_vocab_size=20000)
     label2id, id2label = get_label_mappings(train_data)
-    print("Id to label mapping:")
-    pprint(id2label)
 
     max_length = 100
     train_ds = BOWDataset(train_data, tokenizer, label2id, max_length)
@@ -315,19 +301,38 @@ if __name__ == "__main__":
 
     trainer = Trainer(model)
 
-    print("Training the model...")
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     trainer.train(train_ds, val_ds, optimizer, num_epochs)
 
-    # Evaluate on dev
     dev_acc = trainer.evaluate(dev_ds)
     print(f"Development accuracy: {100 * dev_acc:.2f}%")
 
-    # Predict on test
     test_preds = trainer.predict(test_ds)
     test_preds = [id2label[pred] for pred in test_preds]
+
     save_results(
         test_data,
         test_preds,
-        os.path.join("results", f"mlp_{args.data}_test_predictions.csv"),
+        os.path.join("results", f"mlp_{data}_test_predictions.csv"),
+    )
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="MultiLayerPerceptron model")
+    parser.add_argument(
+        "-d",
+        "--data",
+        type=str,
+        default="sst2",
+        help="Data source, one of ('sst2', 'newsgroups')",
+    )
+    parser.add_argument("-e", "--epochs", type=int, default=3)
+    parser.add_argument("-l", "--learning_rate", type=float, default=0.001)
+
+    args = parser.parse_args()
+
+    main(
+        data=args.data,
+        num_epochs=args.epochs,
+        lr=args.learning_rate,
     )
